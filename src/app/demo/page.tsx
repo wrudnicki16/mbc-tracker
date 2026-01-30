@@ -28,6 +28,31 @@ interface GroupedInstances {
 export default function DemoPage() {
   const [instances, setInstances] = useState<MeasureInstance[]>([]);
   const [loading, setLoading] = useState(true);
+  const [cronRunning, setCronRunning] = useState(false);
+  const [cronResult, setCronResult] = useState<{
+    success: boolean;
+    generated?: { appointments: number; instances: number };
+    expired?: number;
+    error?: string;
+  } | null>(null);
+
+  const runCronJob = async () => {
+    setCronRunning(true);
+    setCronResult(null);
+    try {
+      const res = await fetch("/api/cron/generate-instances");
+      const json = await res.json();
+      setCronResult(json);
+      // Reload instances after cron job
+      const instancesRes = await fetch("/api/demo/questionnaires");
+      const instancesJson = await instancesRes.json();
+      setInstances(instancesJson.instances || []);
+    } catch (error) {
+      setCronResult({ success: false, error: String(error) });
+    } finally {
+      setCronRunning(false);
+    }
+  };
 
   useEffect(() => {
     async function loadInstances() {
@@ -98,6 +123,44 @@ export default function DemoPage() {
             Click any link below to test the questionnaire flow. These are
             pending assessments created from seed data.
           </p>
+        </div>
+
+        {/* Cron Job Trigger */}
+        <div className="mb-6 p-4 bg-gray-100 rounded-lg border border-gray-200">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="font-medium text-gray-900">Generate Measure Instances</h3>
+              <p className="text-sm text-gray-600">
+                Manually trigger the cron job to generate upcoming questionnaire instances.
+              </p>
+            </div>
+            <button
+              onClick={runCronJob}
+              disabled={cronRunning}
+              className="bg-green-600 hover:bg-green-700 disabled:bg-green-400 text-white px-4 py-2 rounded text-sm font-medium"
+            >
+              {cronRunning ? "Running..." : "Run Cron Job"}
+            </button>
+          </div>
+          {cronResult && (
+            <div
+              className={`mt-3 p-3 rounded text-sm ${
+                cronResult.success
+                  ? "bg-green-50 text-green-800 border border-green-200"
+                  : "bg-red-50 text-red-800 border border-red-200"
+              }`}
+            >
+              {cronResult.success ? (
+                <>
+                  Generated {cronResult.generated?.instances} instances for{" "}
+                  {cronResult.generated?.appointments} appointments. Marked{" "}
+                  {cronResult.expired} as expired.
+                </>
+              ) : (
+                <>Error: {cronResult.error}</>
+              )}
+            </div>
+          )}
         </div>
 
         {Object.keys(grouped).length === 0 ? (
