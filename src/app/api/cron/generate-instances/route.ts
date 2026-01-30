@@ -42,7 +42,15 @@ export async function POST(request: NextRequest) {
 }
 
 // Also allow GET for easy manual trigger in demo
-export async function GET() {
+export async function GET(request: NextRequest) {
+  // Verify cron secret in production
+  const authHeader = request.headers.get("authorization");
+  const cronSecret = process.env.CRON_SECRET;
+
+  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   try {
     const generated = await generateUpcomingInstances(7);
     const expiredCount = await markExpiredInstances();
