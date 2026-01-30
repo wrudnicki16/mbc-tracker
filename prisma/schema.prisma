@@ -1,0 +1,246 @@
+// MBC Compliance Monitor - Prisma Schema
+// Following MVP 1's data model
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ============================================
+// MEASURES (Step 1 - PHQ-9 & GAD-7)
+// ============================================
+
+model Measure {
+  id          String   @id @default(cuid())
+  name        String   @unique // "PHQ-9", "GAD-7"
+  description String
+  minScore    Int      @default(0)
+  maxScore    Int
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  questions        MeasureQuestion[]
+  severityBands    SeverityBand[]
+  measureInstances MeasureInstance[]
+
+  @@map("measures")
+}
+
+model MeasureQuestion {
+  id           String @id @default(cuid())
+  measureId    String
+  questionNum  Int
+  questionText String
+  minValue     Int    @default(0)
+  maxValue     Int    @default(3)
+
+  measure Measure @relation(fields: [measureId], references: [id], onDelete: Cascade)
+
+  @@unique([measureId, questionNum])
+  @@map("measure_questions")
+}
+
+model SeverityBand {
+  id        String @id @default(cuid())
+  measureId String
+  label     String // "minimal", "mild", "moderate", "moderately_severe", "severe"
+  minScore  Int
+  maxScore  Int
+
+  measure Measure @relation(fields: [measureId], references: [id], onDelete: Cascade)
+
+  @@map("severity_bands")
+}
+
+// ============================================
+// USERS & ROLES (Step 2)
+// ============================================
+
+enum UserRole {
+  ADMIN
+  CLINICIAN
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  firstName    String
+  lastName     String
+  role         UserRole
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  clinician   Clinician?
+  auditEvents AuditEvent[]
+
+  @@map("users")
+}
+
+// ============================================
+// CORE ENTITIES (Step 3)
+// ============================================
+
+model Clinician {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  patients     Patient[]
+  appointments Appointment[]
+
+  @@map("clinicians")
+}
+
+model Patient {
+  id           String    @id @default(cuid())
+  externalId   String?   @unique // optional clinic MRN
+  firstName    String
+  lastName     String
+  dateOfBirth  DateTime?
+  email        String?
+  phone        String?
+  clinicianId  String
+  intakeDate   DateTime  @default(now())
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  clinician        Clinician         @relation(fields: [clinicianId], references: [id])
+  appointments     Appointment[]
+  measureInstances MeasureInstance[]
+
+  @@map("patients")
+}
+
+model Appointment {
+  id           String    @id @default(cuid())
+  patientId    String
+  clinicianId  String
+  scheduledAt  DateTime
+  completedAt  DateTime?
+  isCancelled  Boolean   @default(false)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  patient          Patient           @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  clinician        Clinician         @relation(fields: [clinicianId], references: [id])
+  measureInstances MeasureInstance[]
+
+  @@map("appointments")
+}
+
+// ============================================
+// MEASURE INSTANCES & RESPONSES (Steps 6-8)
+// ============================================
+
+enum MeasureInstanceStatus {
+  PENDING    // Created, not yet sent
+  SENT       // Link sent to client
+  STARTED    // Client opened link
+  COMPLETED  // Client submitted responses
+  EXPIRED    // Past expiration window
+  CANCELLED  // Manually cancelled
+}
+
+model MeasureInstance {
+  id            String                @id @default(cuid())
+  patientId     String
+  measureId     String
+  appointmentId String?               // null for intake assessments
+  token         String                @unique @default(cuid()) // magic link token
+  status        MeasureInstanceStatus @default(PENDING)
+  dueDate       DateTime
+  expiresAt     DateTime
+  sentAt        DateTime?
+  startedAt     DateTime?
+  completedAt   DateTime?
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
+
+  patient   Patient          @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  measure   Measure          @relation(fields: [measureId], references: [id])
+  appointment Appointment?   @relation(fields: [appointmentId], references: [id])
+  response  MeasureResponse?
+
+  @@index([patientId, dueDate])
+  @@index([status])
+  @@index([token])
+  @@map("measure_instances")
+}
+
+model MeasureResponse {
+  id                String   @id @default(cuid())
+  measureInstanceId String   @unique
+  answers           Json     // Array of {questionNum: number, value: number}
+  totalScore        Int
+  severityBand      String   // "minimal", "mild", etc.
+  completedAt       DateTime @default(now())
+  createdAt         DateTime @default(now())
+
+  measureInstance MeasureInstance @relation(fields: [measureInstanceId], references: [id], onDelete: Cascade)
+
+  @@map("measure_responses")
+}
+
+// ============================================
+// MBC POLICY CONFIG (Step 5)
+// ============================================
+
+model MbcPolicy {
+  id                   String   @id @default(cuid())
+  name                 String   @unique @default("default")
+  cadenceDays          Int      @default(14)  // Every 2 weeks
+  graceWindowDays      Int      @default(3)   // 3 day grace period
+  expirationDays       Int      @default(7)   // Link expires after 7 days
+  measuresRequired     String[] @default(["PHQ-9", "GAD-7"])
+  requireAtIntake      Boolean  @default(true)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@map("mbc_policies")
+}
+
+// ============================================
+// AUDIT LOG (Step 11)
+// ============================================
+
+enum AuditEventType {
+  INSTANCE_CREATED
+  LINK_GENERATED
+  LINK_SENT
+  QUESTIONNAIRE_STARTED
+  QUESTIONNAIRE_SUBMITTED
+  SCORE_COMPUTED
+  CLINICIAN_VIEWED_CHART
+  PATIENT_CREATED
+  PATIENT_UPDATED
+  APPOINTMENT_CREATED
+  APPOINTMENT_CANCELLED
+  USER_LOGIN
+}
+
+model AuditEvent {
+  id            String         @id @default(cuid())
+  eventType     AuditEventType
+  userId        String?        // null for client actions
+  patientId     String?
+  resourceType  String?        // "MeasureInstance", "Patient", etc.
+  resourceId    String?
+  metadata      Json?          // Additional context
+  ipAddress     String?
+  userAgent     String?
+  createdAt     DateTime       @default(now())
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([eventType])
+  @@index([patientId])
+  @@index([createdAt])
+  @@map("audit_events")
+}
