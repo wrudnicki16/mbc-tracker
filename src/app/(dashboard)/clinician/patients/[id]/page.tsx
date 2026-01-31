@@ -23,6 +23,7 @@ interface PatientProgress {
   patient: {
     id: string;
     name: string;
+    email: string | null;
     intakeDate: string;
     clinician: string;
   };
@@ -68,6 +69,7 @@ export default function PatientProgressPage() {
   const [data, setData] = useState<PatientProgress | null>(null);
   const [loading, setLoading] = useState(true);
   const [copySuccess, setCopySuccess] = useState<string | null>(null);
+  const [emailStatus, setEmailStatus] = useState<Record<string, "sending" | "sent" | "error">>({});
 
   useEffect(() => {
     async function loadData() {
@@ -89,6 +91,34 @@ export default function PatientProgressPage() {
     await navigator.clipboard.writeText(url);
     setCopySuccess(token);
     setTimeout(() => setCopySuccess(null), 2000);
+  };
+
+  const sendEmail = async (instanceId: string) => {
+    setEmailStatus((prev) => ({ ...prev, [instanceId]: "sending" }));
+    try {
+      const res = await fetch("/api/notifications/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ instanceId, channel: "email" }),
+      });
+      if (res.ok) {
+        setEmailStatus((prev) => ({ ...prev, [instanceId]: "sent" }));
+        // Update the assessment status in local state
+        setData((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            pendingAssessments: prev.pendingAssessments.map((a) =>
+              a.id === instanceId ? { ...a, status: "SENT" } : a
+            ),
+          };
+        });
+      } else {
+        setEmailStatus((prev) => ({ ...prev, [instanceId]: "error" }));
+      }
+    } catch {
+      setEmailStatus((prev) => ({ ...prev, [instanceId]: "error" }));
+    }
   };
 
   const exportCSV = () => {
@@ -212,6 +242,32 @@ export default function PatientProgressPage() {
                     >
                       {copySuccess === assessment.token ? "Copied!" : "Copy Link"}
                     </button>
+                    {data.patient.email && (assessment.status === "PENDING" || assessment.status === "SENT") && (
+                      <>
+                        <span className="text-gray-300">|</span>
+                        <button
+                          onClick={() => sendEmail(assessment.id)}
+                          disabled={emailStatus[assessment.id] === "sending"}
+                          className={`text-sm ${
+                            emailStatus[assessment.id] === "sent"
+                              ? "text-green-600"
+                              : emailStatus[assessment.id] === "error"
+                                ? "text-red-600"
+                                : emailStatus[assessment.id] === "sending"
+                                  ? "text-gray-400"
+                                  : "text-blue-600 hover:text-blue-800"
+                          }`}
+                        >
+                          {emailStatus[assessment.id] === "sending"
+                            ? "Sending..."
+                            : emailStatus[assessment.id] === "sent"
+                              ? "Sent!"
+                              : emailStatus[assessment.id] === "error"
+                                ? "Failed"
+                                : "Send Email"}
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
               ))}

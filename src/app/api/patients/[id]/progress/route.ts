@@ -90,6 +90,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     patient: {
       id: patient.id,
       name: `${patient.firstName} ${patient.lastName}`,
+      email: patient.email,
       intakeDate: patient.intakeDate,
       clinician: `${patient.clinician.user.firstName} ${patient.clinician.user.lastName}`,
     },
