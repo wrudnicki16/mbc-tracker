@@ -201,7 +201,7 @@ async function main() {
   console.log("Creating demo patients...");
 
   const patientData = [
-    { firstName: "John", lastName: "Doe", email: "john.doe@email.example" },
+    { firstName: "John", lastName: "Doe", email: "wyattrudnicki@gmail.com" },
     { firstName: "Jane", lastName: "Smith", email: "jane.smith@email.example" },
     {
       firstName: "Robert",
