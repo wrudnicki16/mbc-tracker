@@ -24,6 +24,7 @@ interface PatientProgress {
     id: string;
     name: string;
     email: string | null;
+    phone: string | null;
     intakeDate: string;
     clinician: string;
   };
@@ -70,6 +71,7 @@ export default function PatientProgressPage() {
   const [loading, setLoading] = useState(true);
   const [copySuccess, setCopySuccess] = useState<string | null>(null);
   const [emailStatus, setEmailStatus] = useState<Record<string, "sending" | "sent" | "error">>({});
+  const [smsStatus, setSmsStatus] = useState<Record<string, "sending" | "sent" | "error">>({});
 
   useEffect(() => {
     async function loadData() {
@@ -118,6 +120,34 @@ export default function PatientProgressPage() {
       }
     } catch {
       setEmailStatus((prev) => ({ ...prev, [instanceId]: "error" }));
+    }
+  };
+
+  const sendSms = async (instanceId: string) => {
+    setSmsStatus((prev) => ({ ...prev, [instanceId]: "sending" }));
+    try {
+      const res = await fetch("/api/notifications/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ instanceId, channel: "sms" }),
+      });
+      if (res.ok) {
+        setSmsStatus((prev) => ({ ...prev, [instanceId]: "sent" }));
+        // Update the assessment status in local state
+        setData((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            pendingAssessments: prev.pendingAssessments.map((a) =>
+              a.id === instanceId ? { ...a, status: "SENT" } : a
+            ),
+          };
+        });
+      } else {
+        setSmsStatus((prev) => ({ ...prev, [instanceId]: "error" }));
+      }
+    } catch {
+      setSmsStatus((prev) => ({ ...prev, [instanceId]: "error" }));
     }
   };
 
@@ -265,6 +295,32 @@ export default function PatientProgressPage() {
                               : emailStatus[assessment.id] === "error"
                                 ? "Failed"
                                 : "Send Email"}
+                        </button>
+                      </>
+                    )}
+                    {data.patient.phone && (assessment.status === "PENDING" || assessment.status === "SENT") && (
+                      <>
+                        <span className="text-gray-300">|</span>
+                        <button
+                          onClick={() => sendSms(assessment.id)}
+                          disabled={smsStatus[assessment.id] === "sending"}
+                          className={`text-sm ${
+                            smsStatus[assessment.id] === "sent"
+                              ? "text-green-600"
+                              : smsStatus[assessment.id] === "error"
+                                ? "text-red-600"
+                                : smsStatus[assessment.id] === "sending"
+                                  ? "text-gray-400"
+                                  : "text-blue-600 hover:text-blue-800"
+                          }`}
+                        >
+                          {smsStatus[assessment.id] === "sending"
+                            ? "Sending..."
+                            : smsStatus[assessment.id] === "sent"
+                              ? "Sent!"
+                              : smsStatus[assessment.id] === "error"
+                                ? "Failed"
+                                : "Send SMS"}
                         </button>
                       </>
                     )}

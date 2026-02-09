@@ -1,10 +1,12 @@
 /**
- * Email Notification Service
- * Sends magic link emails to patients for completing assessments.
- * Uses Resend in production, FakeEmailProvider for local testing.
+ * Notification Service
+ * Sends magic link emails and SMS to patients for completing assessments.
+ * Uses Resend for email, Twilio for SMS.
+ * Falls back to Fake providers for local testing when API keys are not set.
  */
 
 import { Resend } from "resend";
+import Twilio from "twilio";
 
 // ============================================
 // Types
@@ -249,5 +251,134 @@ export async function sendMagicLinkEmail(
     to: data.patientEmail,
     subject,
     html,
+  });
+}
+
+// ============================================
+// SMS Types
+// ============================================
+
+export interface SmsResult {
+  success: boolean;
+  messageId?: string;
+  error?: string;
+}
+
+export interface MagicLinkSmsData {
+  patientFirstName: string;
+  patientPhone: string;
+  measureName: string;
+  magicLinkUrl: string;
+}
+
+// ============================================
+// SMS Provider Interface
+// ============================================
+
+export interface SmsProvider {
+  sendSms(params: { to: string; body: string }): Promise<SmsResult>;
+}
+
+// ============================================
+// Twilio Provider (Production)
+// ============================================
+
+export class TwilioSmsProvider implements SmsProvider {
+  private client: Twilio.Twilio;
+  private fromPhone: string;
+
+  constructor(accountSid: string, authToken: string, fromPhone: string) {
+    this.client = Twilio(accountSid, authToken);
+    this.fromPhone = fromPhone;
+  }
+
+  async sendSms(params: { to: string; body: string }): Promise<SmsResult> {
+    try {
+      console.log("Twilio: Sending SMS...", {
+        from: this.fromPhone,
+        to: params.to,
+      });
+      const message = await this.client.messages.create({
+        from: this.fromPhone,
+        to: params.to,
+        body: params.body,
+      });
+
+      return { success: true, messageId: message.sid };
+    } catch (err) {
+      console.error("Twilio send failed:", err);
+      const message = err instanceof Error ? err.message : "Unknown error";
+      return { success: false, error: message };
+    }
+  }
+}
+
+// ============================================
+// Fake SMS Provider (Local Testing)
+// ============================================
+
+export class FakeSmsProvider implements SmsProvider {
+  async sendSms(params: { to: string; body: string }): Promise<SmsResult> {
+    const messageId = `fake-sms-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+
+    console.log("\n========================================");
+    console.log("📱 FAKE SMS SENT (No TWILIO credentials)");
+    console.log("========================================");
+    console.log(`To: ${params.to}`);
+    console.log(`Message ID: ${messageId}`);
+    console.log("----------------------------------------");
+    console.log("Body:");
+    console.log(params.body);
+    console.log("========================================\n");
+
+    return { success: true, messageId };
+  }
+}
+
+// ============================================
+// SMS Provider Factory
+// ============================================
+
+let smsProvider: SmsProvider | null = null;
+
+export function getSmsProvider(): SmsProvider {
+  if (smsProvider) {
+    return smsProvider;
+  }
+
+  const accountSid = process.env.TWILIO_ACCOUNT_SID;
+  const authToken = process.env.TWILIO_AUTH_TOKEN;
+  const fromPhone = process.env.TWILIO_FROM_PHONE;
+
+  if (accountSid && authToken && fromPhone) {
+    smsProvider = new TwilioSmsProvider(accountSid, authToken, fromPhone);
+    console.log("📱 Using Twilio SMS provider");
+  } else {
+    smsProvider = new FakeSmsProvider();
+    console.log("📱 Using Fake SMS provider (set TWILIO_* env vars for real SMS)");
+  }
+
+  return smsProvider;
+}
+
+// ============================================
+// SMS Message Generator
+// ============================================
+
+export function generateMagicLinkSmsBody(data: MagicLinkSmsData): string {
+  return `Hi ${data.patientFirstName}, your clinician has requested you complete a ${data.measureName} assessment. Click here to begin: ${data.magicLinkUrl}`;
+}
+
+// ============================================
+// Main SMS Send Function
+// ============================================
+
+export async function sendMagicLinkSms(data: MagicLinkSmsData): Promise<SmsResult> {
+  const provider = getSmsProvider();
+  const body = generateMagicLinkSmsBody(data);
+
+  return provider.sendSms({
+    to: data.patientPhone,
+    body,
   });
 }

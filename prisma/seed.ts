@@ -201,15 +201,16 @@ async function main() {
   console.log("Creating demo patients...");
 
   const patientData = [
-    { firstName: "John", lastName: "Doe", email: "wyattrudnicki@gmail.com" },
-    { firstName: "Jane", lastName: "Smith", email: "jane.smith@email.example" },
+    { firstName: "John", lastName: "Doe", email: "wyattrudnicki@gmail.com", phone: "+14152659362" },
+    { firstName: "Jane", lastName: "Smith", email: "jane.smith@email.example", phone: null },
     {
       firstName: "Robert",
       lastName: "Johnson",
       email: "robert.j@email.example",
+      phone: null,
     },
-    { firstName: "Emily", lastName: "Brown", email: "emily.b@email.example" },
-    { firstName: "Michael", lastName: "Davis", email: "m.davis@email.example" },
+    { firstName: "Emily", lastName: "Brown", email: "emily.b@email.example", phone: null },
+    { firstName: "Michael", lastName: "Davis", email: "m.davis@email.example", phone: null },
   ];
 
   const patients = await Promise.all(

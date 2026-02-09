@@ -1,16 +1,16 @@
 /**
  * Manual Send Notification Endpoint
- * Allows clinicians to manually send assessment links to patients via email.
+ * Allows clinicians to manually send assessment links to patients via email or SMS.
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { sendMagicLinkEmail } from "@/lib/notifications";
+import { sendMagicLinkEmail, sendMagicLinkSms } from "@/lib/notifications";
 import { audit } from "@/lib/audit";
 
 interface SendNotificationRequest {
   instanceId: string;
-  channel: "email";
+  channel: "email" | "sms";
 }
 
 export async function POST(request: NextRequest) {
@@ -25,9 +25,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (channel !== "email") {
+    if (channel !== "email" && channel !== "sms") {
       return NextResponse.json(
-        { error: "Only email channel is currently supported" },
+        { error: "Channel must be 'email' or 'sms'" },
         { status: 400 }
       );
     }
@@ -48,10 +48,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check if patient has email
-    if (!instance.patient.email) {
+    // Check if patient has the required contact info
+    if (channel === "email" && !instance.patient.email) {
       return NextResponse.json(
         { error: "Patient does not have an email address" },
+        { status: 400 }
+      );
+    }
+
+    if (channel === "sms" && !instance.patient.phone) {
+      return NextResponse.json(
+        { error: "Patient does not have a phone number" },
         { status: 400 }
       );
     }
@@ -75,19 +82,30 @@ export async function POST(request: NextRequest) {
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
     const magicLinkUrl = `${appUrl}/q/${instance.token}`;
 
-    // Send the email
-    const result = await sendMagicLinkEmail({
-      patientFirstName: instance.patient.firstName,
-      patientEmail: instance.patient.email,
-      measureName: instance.measure.name,
-      dueDate: instance.dueDate,
-      magicLinkUrl,
-      expiresAt: instance.expiresAt,
-    });
+    // Send via the appropriate channel
+    let result: { success: boolean; messageId?: string; error?: string };
+
+    if (channel === "email") {
+      result = await sendMagicLinkEmail({
+        patientFirstName: instance.patient.firstName,
+        patientEmail: instance.patient.email!,
+        measureName: instance.measure.name,
+        dueDate: instance.dueDate,
+        magicLinkUrl,
+        expiresAt: instance.expiresAt,
+      });
+    } else {
+      result = await sendMagicLinkSms({
+        patientFirstName: instance.patient.firstName,
+        patientPhone: instance.patient.phone!,
+        measureName: instance.measure.name,
+        magicLinkUrl,
+      });
+    }
 
     if (!result.success) {
       return NextResponse.json(
-        { error: `Failed to send email: ${result.error}` },
+        { error: `Failed to send ${channel}: ${result.error}` },
         { status: 500 }
       );
     }
@@ -107,9 +125,11 @@ export async function POST(request: NextRequest) {
       resourceType: "MeasureInstance",
       resourceId: instanceId,
       metadata: {
-        channel: "email",
+        channel,
         messageId: result.messageId,
-        recipientEmail: instance.patient.email,
+        ...(channel === "email"
+          ? { recipientEmail: instance.patient.email }
+          : { recipientPhone: instance.patient.phone }),
       },
     });
 
