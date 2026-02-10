@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { audit } from "@/lib/audit";
 import { createIntakeAssessments } from "@/lib/scheduling";
+import { getAuthenticatedUser } from "@/lib/auth";
 
 // GET: List patients
 export async function GET(request: NextRequest) {
@@ -77,9 +78,14 @@ export async function GET(request: NextRequest) {
 
 // POST: Create patient
 export async function POST(request: NextRequest) {
+  const user = await getAuthenticatedUser(request);
+
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const body = await request.json();
-  const { firstName, lastName, email, phone, dateOfBirth, externalId, clinicianId, userId } =
-    body;
+  const { firstName, lastName, email, phone, dateOfBirth, externalId, clinicianId } = body;
 
   if (!firstName || !lastName || !clinicianId) {
     return NextResponse.json(
@@ -112,14 +118,14 @@ export async function POST(request: NextRequest) {
   });
 
   await audit.patientCreated({
-    userId,
+    userId: user.userId,
     patientId: patient.id,
     resourceType: "Patient",
     resourceId: patient.id,
     metadata: { clinicianId },
   });
 
-  const instances = await createIntakeAssessments(patient.id, userId);
+  const instances = await createIntakeAssessments(patient.id, user.userId);
 
   return NextResponse.json({
     patient: {
