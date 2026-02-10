@@ -22,13 +22,6 @@ This system solves these problems with a simple, end-to-end workflow:
 5. **Admin monitors compliance** → Dashboard shows completion rates and overdue assessments
 6. **Audit trail** → Every action logged for compliance reporting
 
-### Design Principles
-
-- **End-to-end value over architecture** - Demo the full loop in 5 minutes
-- **Magic links over patient portals** - No accounts needed for patients
-- **Clinic-wide policy over per-payer rules** - Avoid complexity rabbit holes
-- **Audit-ready from day one** - Every action traceable
-
 ## Features
 
 - **Patient Management** - Register and manage patients with clinician assignments
