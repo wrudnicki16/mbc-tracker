@@ -174,19 +174,19 @@ export default function SMSConsentPage() {
               <li>
                 <strong>Email:</strong>{" "}
                 <a
-                  href="mailto:support@example.com"
+                  href="mailto:wyattrudnicki@gmail.com"
                   className="text-blue-600 hover:underline"
                 >
-                  support@example.com
+                  wyattrudnicki@gmail.com
                 </a>
               </li>
               <li>
                 <strong>Phone:</strong>{" "}
                 <a
-                  href="tel:+15551234567"
+                  href="tel:+14152659362"
                   className="text-blue-600 hover:underline"
                 >
-                  (555) 123-4567
+                  (415) 265-9362
                 </a>
               </li>
             </ul>
